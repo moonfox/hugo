@@ -264,6 +264,41 @@ func (m *pageMap) newResource(fim hugofs.FileMetaInfo, owner *pageState) (resour
 		})
 }
 
+func (m *pageMap) tagMap(name string) string {
+	tags := map[string]string{
+		"Ta们的我": "taandme",
+		"人物":    "people",
+		"前端":    "frontend",
+		"娱乐":    "entertainment",
+		"婚礼":    "wedding",
+		"小知识":   "youknow",
+		"彩票":    "caipiao",
+		"微博":    "weibo",
+		"摄影":    "photographer",
+		"操作系统":  "os",
+		"敏捷":    "agile",
+		"新闻":    "news",
+		"有趣":    "funny",
+		"浏览器":   "browser",
+		"生活":    "life",
+		"电影":    "movie",
+		"电视剧":   "tv",
+		"美食":    "cate",
+		"装修":    "zhuangxiu",
+		"财经":    "finance",
+		"购物":    "shopping",
+		"魔方":    "rubik",
+		"随笔":    "journal",
+		"做滴菜":   "mycook",
+	}
+
+	value, ok := tags[name]
+	if !ok {
+		value = name
+	}
+	return value
+}
+
 func (m *pageMap) createSiteTaxonomies() error {
 	m.s.taxonomies = make(TaxonomyList)
 	m.taxonomies.Walk(func(s string, v interface{}) bool {
@@ -273,14 +308,17 @@ func (m *pageMap) createSiteTaxonomies() error {
 		viewName := t.name
 
 		if t.termKey == "" {
+			// fmt.Println("sdddddd", viewName.plural)
 			m.s.taxonomies[viewName.plural] = make(Taxonomy)
 		} else {
 			taxonomy := m.s.taxonomies[viewName.plural]
+			// fmt.Println("=========ttttt", viewName.plural)
 			m.taxonomyEntries.WalkPrefix(s+"/", func(ss string, v interface{}) bool {
 				b2 := v.(*contentNode)
 				info := b2.viewInfo
 				taxonomy.add(info.termKey, page.NewWeightedPage(info.weight, info.ref.p, n.p))
-
+				// fmt.Println(key, info.weight, info.ref.p, n.p)
+				// fmt.Printf("n.p:%+v, info.ref.p:%+v\n", *(n.p), info.ref.p)
 				return false
 			})
 		}

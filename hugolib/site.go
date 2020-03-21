@@ -1541,6 +1541,17 @@ func (s *Site) permalink(link string) string {
 
 }
 
+func (s *SiteInfo) TagMap(name string) string {
+	tags := map[string]string{
+		"Ta们的我": "taandme",
+		"人物":    "people",
+		"前端":    "frontend",
+		"娱乐":    "entertainment",
+		"婚礼":    "wedding",
+	}
+	return tags[name]
+}
+
 func (s *Site) lookupLayouts(layouts ...string) tpl.Template {
 	for _, l := range layouts {
 		if templ, found := s.Tmpl().Lookup(l); found {

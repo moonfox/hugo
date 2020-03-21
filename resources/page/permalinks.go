@@ -76,6 +76,7 @@ func NewPermalinkExpander(ps *helpers.PathSpec) (PermalinkExpander, error) {
 		"title":       p.pageToPermalinkTitle,
 		"slug":        p.pageToPermalinkSlugElseTitle,
 		"filename":    p.pageToPermalinkFilename,
+		"regfilename": p.pageToPermalinkRegFilename,
 	}
 
 	patterns := ps.Cfg.GetStringMapString("permalinks")
@@ -250,6 +251,15 @@ func (l PermalinkExpander) pageToPermalinkFilename(p Page, _ string) (string, er
 		dir := strings.TrimSuffix(p.File().Dir(), helpers.FilePathSeparator)
 		_, name = filepath.Split(dir)
 	}
+
+	return l.ps.URLize(name), nil
+}
+
+// pageToPermalinkFilename returns the URL-safe form of the filename without prefix date
+func (l PermalinkExpander) pageToPermalinkRegFilename(p Page, _ string) (string, error) {
+	name, _ := l.pageToPermalinkFilename(p, "")
+	reg := regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})`)
+	name = reg.ReplaceAllString(name, "")
 
 	return l.ps.URLize(name), nil
 }
