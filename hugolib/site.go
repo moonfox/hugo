@@ -248,7 +248,7 @@ func (s *Site) prepareInits() {
 	s.init.prevNextInSection = init.Branch(func() (interface{}, error) {
 
 		var sections page.Pages
-		s.home.treeRef.m.collectSectionsRecursiveIncludingSelf(s.home.treeRef.key, func(n *contentNode) {
+		s.home.treeRef.m.collectSectionsRecursiveIncludingSelf(pageMapQuery{Prefix: s.home.treeRef.key}, func(n *contentNode) {
 			sections = append(sections, n.p)
 		})
 
@@ -281,7 +281,7 @@ func (s *Site) prepareInits() {
 			treeRef := sect.(treeRefProvider).getTreeRef()
 
 			var pas page.Pages
-			treeRef.m.collectPages(treeRef.key+cmBranchSeparator, func(c *contentNode) {
+			treeRef.m.collectPages(pageMapQuery{Prefix: treeRef.key + cmBranchSeparator}, func(c *contentNode) {
 				pas = append(pas, c.p)
 			})
 			page.SortByDefault(pas)
@@ -293,7 +293,7 @@ func (s *Site) prepareInits() {
 		treeRef := s.home.getTreeRef()
 
 		var pas page.Pages
-		treeRef.m.collectPages(treeRef.key+cmBranchSeparator, func(c *contentNode) {
+		treeRef.m.collectPages(pageMapQuery{Prefix: treeRef.key + cmBranchSeparator}, func(c *contentNode) {
 			pas = append(pas, c.p)
 		})
 		page.SortByDefault(pas)
@@ -777,7 +777,6 @@ func (s siteRefLinker) logNotFound(ref, what string, p page.Page, position text.
 }
 
 func (s *siteRefLinker) refLink(ref string, source interface{}, relative bool, outputFormat string) (string, error) {
-
 	p, err := unwrapPage(source)
 	if err != nil {
 		return "", err

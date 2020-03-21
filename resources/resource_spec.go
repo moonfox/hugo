@@ -22,6 +22,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gohugoio/hugo/common/herrors"
+
+	"github.com/gohugoio/hugo/config"
+
 	"github.com/gohugoio/hugo/hugofs"
 
 	"github.com/gohugoio/hugo/helpers"
@@ -41,6 +45,7 @@ func NewSpec(
 	s *helpers.PathSpec,
 	fileCaches filecache.Caches,
 	logger *loggers.Logger,
+	errorHandler herrors.ErrorSender,
 	outputFormats output.Formats,
 	mimeTypes media.Types) (*Spec, error) {
 
@@ -65,10 +70,12 @@ func NewSpec(
 
 	rs := &Spec{PathSpec: s,
 		Logger:        logger,
+		ErrorSender:   errorHandler,
 		imaging:       imaging,
 		MediaTypes:    mimeTypes,
 		OutputFormats: outputFormats,
 		Permalinks:    permalinks,
+		BuildConfig:   config.DecodeBuild(s.Cfg),
 		FileCaches:    fileCaches,
 		imageCache: newImageCache(
 			fileCaches.ImageCache(),
@@ -88,11 +95,13 @@ type Spec struct {
 	MediaTypes    media.Types
 	OutputFormats output.Formats
 
-	Logger *loggers.Logger
+	Logger      *loggers.Logger
+	ErrorSender herrors.ErrorSender
 
 	TextTemplates tpl.TemplateParseFinder
 
-	Permalinks page.PermalinkExpander
+	Permalinks  page.PermalinkExpander
+	BuildConfig config.Build
 
 	// Holds default filter settings etc.
 	imaging *images.ImageProcessor

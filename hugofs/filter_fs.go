@@ -66,7 +66,7 @@ func NewLanguageFs(langs map[string]int, fs afero.Fs) (afero.Fs, error) {
 				metaKeyOrdinal:                    langs[lang],
 				metaKeyTranslationBaseName:        translationBaseName,
 				metaKeyTranslationBaseNameWithExt: translationBaseNameWithExt,
-				metaKeyClassifier:                 files.ClassifyContentFile(fi.Name()),
+				metaKeyClassifier:                 files.ClassifyContentFile(fi.Name(), meta.GetOpener()),
 			})
 
 			fis[i] = fim
@@ -153,7 +153,8 @@ func (fs *FilterFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
 		return decorateFileInfo(fi, fs, fs.getOpener(name), "", "", nil), false, nil
 	}
 
-	fs.applyFilters(name, -1, fi)
+	parent := filepath.Dir(name)
+	fs.applyFilters(parent, -1, fi)
 
 	return fi, b, nil
 

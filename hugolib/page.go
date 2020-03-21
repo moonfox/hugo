@@ -141,13 +141,13 @@ func (p *pageState) GetTerms(taxonomy string) page.Pages {
 	if p.IsHome() {
 		// TODO(bep) make this less magical, see taxonomyEntries.Insert.
 		self = "/" + page.KindHome
-	} else {
+	} else if p.treeRef != nil {
 		self = p.treeRef.key
 	}
 
 	var pas page.Pages
 
-	m.taxonomies.WalkPrefixListable(prefix, func(s string, n *contentNode) bool {
+	m.taxonomies.WalkQuery(pageMapQuery{Prefix: prefix}, func(s string, n *contentNode) bool {
 		if _, found := m.taxonomyEntries.Get(s + self); found {
 			pas = append(pas, n.p)
 		}
@@ -171,12 +171,38 @@ func (p *pageState) getPages() page.Pages {
 	return b.getPages()
 }
 
+func (p *pageState) getPagesRecursive() page.Pages {
+	b := p.bucket
+	if b == nil {
+		return nil
+	}
+	return b.getPagesRecursive()
+}
+
 func (p *pageState) getPagesAndSections() page.Pages {
 	b := p.bucket
 	if b == nil {
 		return nil
 	}
 	return b.getPagesAndSections()
+}
+
+func (p *pageState) RegularPagesRecursive() page.Pages {
+	p.regularPagesRecursiveInit.Do(func() {
+		var pages page.Pages
+		switch p.Kind() {
+		case page.KindSection:
+			pages = p.getPagesRecursive()
+		default:
+			pages = p.RegularPages()
+		}
+		p.regularPagesRecursive = pages
+	})
+	return p.regularPagesRecursive
+}
+
+func (p *pageState) PagesRecursive() page.Pages {
+	return nil
 }
 
 func (p *pageState) RegularPages() page.Pages {
@@ -449,12 +475,6 @@ func (p *pageState) initOutputFormat(isRenderingSite bool, idx int) error {
 		return err
 	}
 
-	if !p.renderable {
-		if _, err := p.Content(); err != nil {
-			return err
-		}
-	}
-
 	return nil
 
 }
@@ -679,8 +699,6 @@ func (p *pageState) mapContent(bucket *pagesMapBucket, meta *pageMeta) error {
 
 	s := p.shortcodeState
 
-	p.renderable = true
-
 	rn := &pageContentMap{
 		items: make([]interface{}, 0, 20),
 	}
@@ -703,12 +721,6 @@ Loop:
 
 		switch {
 		case it.Type == pageparser.TypeIgnore:
-		case it.Type == pageparser.TypeHTMLStart:
-			// This is HTML without front matter. It can still have shortcodes.
-			p.selfLayout = "__" + p.File().Filename()
-			p.renderable = false
-			p.s.BuildFlags.HasLateTemplate.CAS(false, true)
-			rn.AddBytes(it)
 		case it.IsFrontMatter():
 			f := pageparser.FormatFromFrontMatterType(it.Type)
 			m, err := metadecoders.Default.UnmarshalToMap(it.Val, f)

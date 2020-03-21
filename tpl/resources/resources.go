@@ -46,13 +46,18 @@ func New(deps *deps.Deps) (*Namespace, error) {
 		return nil, err
 	}
 
+	minifyClient, err := minifier.New(deps.ResourceSpec)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Namespace{
 		deps:            deps,
 		scssClient:      scssClient,
 		createClient:    create.New(deps.ResourceSpec),
 		bundlerClient:   bundler.New(deps.ResourceSpec),
 		integrityClient: integrity.New(deps.ResourceSpec),
-		minifyClient:    minifier.New(deps.ResourceSpec),
+		minifyClient:    minifyClient,
 		postcssClient:   postcss.New(deps.ResourceSpec),
 		templatesClient: templates.New(deps.ResourceSpec, deps),
 	}, nil
@@ -299,6 +304,9 @@ func (ns *Namespace) resolveArgs(args []interface{}) (resources.ResourceTransfor
 
 	r, ok := args[1].(resources.ResourceTransformer)
 	if !ok {
+		if _, ok := args[1].(map[string]interface{}); !ok {
+			return nil, nil, fmt.Errorf("no Resource provided in transformation")
+		}
 		return nil, nil, fmt.Errorf("type %T not supported in Resource transformations", args[0])
 	}
 

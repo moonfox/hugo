@@ -22,6 +22,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gohugoio/hugo/common/herrors"
+
 	"github.com/gohugoio/hugo/htesting"
 
 	"github.com/spf13/viper"
@@ -82,6 +84,69 @@ T1: {{ $r.Content }}
 	b.Build(BuildCfg{})
 
 	b.AssertFileContent(filepath.Join(workDir, "public/index.html"), `T1: moo{color:#fff}`)
+
+}
+
+func TestSCSSWithRegularCSSImport(t *testing.T) {
+	if !scss.Supports() {
+		t.Skip("Skip SCSS")
+	}
+	c := qt.New(t)
+	workDir, clean, err := htesting.CreateTempDir(hugofs.Os, "hugo-scss-include")
+	c.Assert(err, qt.IsNil)
+	defer clean()
+
+	v := viper.New()
+	v.Set("workingDir", workDir)
+	b := newTestSitesBuilder(t).WithLogger(loggers.NewErrorLogger())
+	// Need to use OS fs for this.
+	b.Fs = hugofs.NewDefault(v)
+	b.WithWorkingDir(workDir)
+	b.WithViper(v)
+
+	scssDir := filepath.Join(workDir, "assets", "scss")
+	c.Assert(os.MkdirAll(filepath.Join(workDir, "content", "sect"), 0777), qt.IsNil)
+	c.Assert(os.MkdirAll(filepath.Join(workDir, "data"), 0777), qt.IsNil)
+	c.Assert(os.MkdirAll(filepath.Join(workDir, "i18n"), 0777), qt.IsNil)
+	c.Assert(os.MkdirAll(filepath.Join(workDir, "layouts", "shortcodes"), 0777), qt.IsNil)
+	c.Assert(os.MkdirAll(filepath.Join(workDir, "layouts", "_default"), 0777), qt.IsNil)
+	c.Assert(os.MkdirAll(filepath.Join(scssDir), 0777), qt.IsNil)
+
+	b.WithSourceFile(filepath.Join(scssDir, "_moo.scss"), `
+$moolor: #fff;
+
+moo {
+  color: $moolor;
+}
+`)
+
+	b.WithSourceFile(filepath.Join(scssDir, "main.scss"), `
+@import "moo";
+@import "regular.css";
+@import "moo";
+@import "another.css";
+
+/* foo */
+`)
+
+	b.WithTemplatesAdded("index.html", `
+{{ $r := resources.Get "scss/main.scss" |  toCSS  }}
+T1: {{ $r.Content | safeHTML }}
+`)
+	b.Build(BuildCfg{})
+
+	b.AssertFileContent(filepath.Join(workDir, "public/index.html"), `
+ T1: moo {
+ color: #fff; }
+
+@import "regular.css";
+moo {
+ color: #fff; }
+
+@import "another.css";
+/* foo */
+        
+`)
 
 }
 
@@ -717,11 +782,10 @@ func TestResourceChainPostCSS(t *testing.T) {
 
 	packageJSON := `{
   "scripts": {},
-  "dependencies": {
-    "tailwindcss": "^1.2"
-  },
+
   "devDependencies": {
-    "postcss-cli": "^7.1.0"
+    "postcss-cli": "^7.1.0",
+    "tailwindcss": "^1.2"
   }
 }
 `
@@ -753,20 +817,17 @@ h1 {
 	c.Assert(err, qt.IsNil)
 	defer clean()
 
-	v := viper.New()
-	v.Set("workingDir", workDir)
-	v.Set("disableKinds", []string{"taxonomyTerm", "taxonomy", "page"})
-	b := newTestSitesBuilder(t).WithLogger(loggers.NewWarningLogger())
-	// Need to use OS fs for this.
-	b.Fs = hugofs.NewDefault(v)
-	b.WithWorkingDir(workDir)
-	b.WithViper(v)
+	newTestBuilder := func(v *viper.Viper) *sitesBuilder {
+		v.Set("workingDir", workDir)
+		v.Set("disableKinds", []string{"taxonomyTerm", "taxonomy", "page"})
+		b := newTestSitesBuilder(t).WithLogger(loggers.NewWarningLogger())
+		// Need to use OS fs for this.
+		b.Fs = hugofs.NewDefault(v)
+		b.WithWorkingDir(workDir)
+		b.WithViper(v)
 
-	cssDir := filepath.Join(workDir, "assets", "css", "components")
-	b.Assert(os.MkdirAll(cssDir, 0777), qt.IsNil)
-
-	b.WithContent("p1.md", "")
-	b.WithTemplates("index.html", `
+		b.WithContent("p1.md", "")
+		b.WithTemplates("index.html", `
 {{ $options := dict "inlineImports" true }}
 {{ $styles := resources.Get "css/styles.css" | resources.PostCSS $options }}
 Styles RelPermalink: {{ $styles.RelPermalink }}
@@ -774,6 +835,15 @@ Styles RelPermalink: {{ $styles.RelPermalink }}
 Styles Content: Len: {{ len $styles.Content }}|
 
 `)
+
+		return b
+	}
+
+	b := newTestBuilder(viper.New())
+
+	cssDir := filepath.Join(workDir, "assets", "css", "components")
+	b.Assert(os.MkdirAll(cssDir, 0777), qt.IsNil)
+
 	b.WithSourceFile("assets/css/styles.css", tailwindCss)
 	b.WithSourceFile("assets/css/components/all.css", `
 @import "a.css";
@@ -810,9 +880,100 @@ Styles RelPermalink: /css/styles.css
 Styles Content: Len: 770878|
 `)
 
-	content := b.FileContent("public/css/styles.css")
+	assertCss := func(b *sitesBuilder) {
+		content := b.FileContent("public/css/styles.css")
 
-	b.Assert(strings.Contains(content, "class-in-a"), qt.Equals, true)
-	b.Assert(strings.Contains(content, "class-in-b"), qt.Equals, true)
+		b.Assert(strings.Contains(content, "class-in-a"), qt.Equals, true)
+		b.Assert(strings.Contains(content, "class-in-b"), qt.Equals, true)
 
+	}
+
+	assertCss(b)
+
+	build := func(s string, shouldFail bool) error {
+		b.Assert(os.RemoveAll(filepath.Join(workDir, "public")), qt.IsNil)
+
+		v := viper.New()
+		v.Set("build", map[string]interface{}{
+			"useResourceCacheWhen": s,
+		})
+
+		b = newTestBuilder(v)
+
+		b.Assert(os.RemoveAll(filepath.Join(workDir, "public")), qt.IsNil)
+
+		err := b.BuildE(BuildCfg{})
+		if shouldFail {
+			b.Assert(err, qt.Not(qt.IsNil))
+		} else {
+			b.Assert(err, qt.IsNil)
+			assertCss(b)
+		}
+
+		return err
+	}
+
+	build("always", false)
+	build("fallback", false)
+
+	// Introduce a syntax error in an import
+	b.WithSourceFile("assets/css/components/b.css", `@import "a.css";
+
+class-in-b {
+	@apply asdf;
+}
+`)
+
+	err = build("newer", true)
+
+	err = herrors.UnwrapErrorWithFileContext(err)
+	fe, ok := err.(*herrors.ErrorWithFileContext)
+	b.Assert(ok, qt.Equals, true)
+	b.Assert(fe.Position().LineNumber, qt.Equals, 4)
+	b.Assert(fe.Error(), qt.Contains, filepath.Join(workDir, "assets/css/components/b.css:4:1"))
+
+	// Remove PostCSS
+	b.Assert(os.RemoveAll(filepath.Join(workDir, "node_modules")), qt.IsNil)
+
+	build("always", false)
+	build("fallback", false)
+	build("never", true)
+
+	// Remove cache
+	b.Assert(os.RemoveAll(filepath.Join(workDir, "resources")), qt.IsNil)
+
+	build("always", true)
+	build("fallback", true)
+	build("never", true)
+
+}
+
+func TestResourceMinifyDisabled(t *testing.T) {
+	t.Parallel()
+
+	b := newTestSitesBuilder(t).WithConfigFile("toml", `
+baseURL = "https://example.org"
+
+[minify]
+disableXML=true
+
+
+`)
+
+	b.WithContent("page.md", "")
+
+	b.WithSourceFile(
+		"assets/xml/data.xml", "<root>   <foo> asdfasdf </foo> </root>",
+	)
+
+	b.WithTemplates("index.html", `
+{{ $xml := resources.Get "xml/data.xml" | minify | fingerprint }}
+XML: {{ $xml.Content | safeHTML }}|{{ $xml.RelPermalink }}
+`)
+
+	b.Build(BuildCfg{})
+
+	b.AssertFileContent("public/index.html", `
+XML: <root>   <foo> asdfasdf </foo> </root>|/xml/data.min.3be4fddd19aaebb18c48dd6645215b822df74701957d6d36e59f203f9c30fd9f.xml
+`)
 }
